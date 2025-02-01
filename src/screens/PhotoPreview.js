@@ -1,47 +1,72 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   SafeAreaView,
   View,
   Image,
-  Button,
-  StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
+  StyleSheet,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { decode } from "base64-arraybuffer";
 import supabase from "../utils/supabaseClient";
-import * as FileSystem from "expo-file-system";
 
 export default function PreviewScreen() {
   const route = useRoute();
   const navigation = useNavigation();
   const [uploading, setUploading] = useState(false);
+  const [user, setUser] = useState(null);
+  const { photoUri } = route.params;
 
-  // photoUri is passed from Camera
-  const { photoUri } = route.params || {};
+  useEffect(() => {
+    const getUser = async () => {
+      const { data, error } = await supabase.auth.getUser();
+      if (error) {
+        console.error("Auth error:", error);
+      } else {
+        setUser(data.user);
+      }
+    };
+    getUser();
+  }, []);
 
   const handleUpload = async () => {
-    if (uploading) return;
+    if (uploading || !user) return;
 
     setUploading(true);
+    const timestamp = Date.now();
+    const fileName = `outfits/${timestamp}.jpg`;
+
     try {
-      const photo = await FileSystem.readAsStringAsync(photoUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      const { data, error } = await supabase.storage
-        .from("images")
-        .upload(`outfits/${Date.now()}.jpg`, decode(photo), {
+      const { data, error } = await supabase.storage.from("images").upload(
+        fileName,
+        {
+          uri: photoUri,
+          type: "image/jpeg",
+          name: fileName,
+        },
+        {
           contentType: "image/jpeg",
-        });
+        }
+      );
+
       if (error) throw new Error(error.message);
+
+      const { error: insertError } = await supabase.from("images").insert([
+        {
+          user_id: user.id,
+          image_name: fileName,
+          uploaded_at: new Date(),
+        },
+      ]);
+
+      if (insertError) throw new Error(insertError.message);
+      navigation.navigate("Home", { screen: "FollowingFeed" });
     } catch (e) {
-      console.error("Upload error", e);
+      console.error("Upload error:", e);
     } finally {
       setUploading(false);
     }
-    navigation.navigate("Home", { screen: "FollowingFeed" });
   };
 
   return (
@@ -49,7 +74,9 @@ export default function PreviewScreen() {
       {photoUri ? (
         <Image source={{ uri: photoUri }} style={styles.fullImage} />
       ) : (
-        <Button title="No Photo" onPress={() => navigation.goBack()} />
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Ionicons name="close-outline" size={40} color="#fff" />
+        </TouchableOpacity>
       )}
 
       <View>
