@@ -4,7 +4,7 @@ import supabase from "../utils/supabaseClient";
 
 export default function ProfileScreen() {
   async function signOut() {
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
   }
   return (
     <View style={styles.container}>
